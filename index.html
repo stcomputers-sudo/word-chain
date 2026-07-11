@@ -297,7 +297,6 @@
                 document.getElementById('current-turn-name').textContent = 'YOUR TURN!';
                 document.getElementById('current-turn-name').classList.add('text-green-400');
             } else {
-                const room = Object.values(socket.rooms); // fallback
                 document.getElementById('current-turn-name').textContent = 'Opponent thinking...';
                 document.getElementById('current-turn-name').classList.remove('text-green-400');
             }
@@ -327,18 +326,12 @@
 
         socket.on('playerEliminated', ({ playerId, reason }) => {
             const errEl = document.getElementById('error-message');
-            // We don't have the name easily accessible here without keeping local state, 
-            // but the server updates turns immediately. We can just flash a generic message.
             errEl.textContent = `A player was eliminated! ${reason}`;
             setTimeout(() => { errEl.textContent = ''; }, 3000);
-            // Request updated player list if needed (or handle via state)
-            // For simplicity, the turn passes automatically.
         });
 
         socket.on('gameOver', ({ winnerId }) => {
             showView('gameover-view');
-            // Since we don't have the full room state on client at this exact moment without keeping a cache,
-            // we can just display "You" if you won, or "Opponent".
             document.getElementById('winner-name').textContent = winnerId === myId ? 'YOU! 🎉' : 'Opponent';
         });
 
