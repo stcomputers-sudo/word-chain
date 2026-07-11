@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Word Chain - Multiplayer</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Poppins', sans-serif; }
+        .glass {
+            background: rgba(17, 24, 39, 0.8);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(55, 65, 81, 0.5);
+        }
+        @keyframes fadeInUp {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .fade-in-up { animation: fadeInUp 0.3s ease-out; }
+        @keyframes slideIn {
+            from { opacity: 0; transform: translateX(-20px); }
+            to { opacity: 1; transform: translateX(0); }
+        }
+        .slide-in { animation: slideIn 0.4s ease-out; }
+        .timer-bar {
+            transition: width 1s linear;
+        }
+        .pulse-danger {
+            animation: pulse 1s infinite;
+        }
+        @keyframes pulse {
+            0% { background-color: rgba(239, 68, 68, 0.3); }
+            50% { background-color: rgba(239, 68, 68, 0.6); }
+            100% { background-color: rgba(239, 68, 68, 0.3); }
+        }
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: #1f2937; }
+        ::-webkit-scrollbar-thumb { background: #4b5563; border-radius: 3px; }
+    </style>
+</head>
+<body class="bg-gray-900 text-gray-100 flex items-center justify-center min-h-screen p-4">
+
+    <div class="w-full max-w-md relative">
+        <!-- Header -->
+        <div class="text-center mb-6">
+            <h1 class="text-4xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 to-purple-500">
+                WORD CHAIN
+            </h1>
+            <p class="text-gray-400 text-sm mt-1">Fast-paced multiplayer vocabulary</p>
+        </div>
+
+        <!-- Main Menu View -->
+        <div id="menu-view" class="glass rounded-2xl p-6 shadow-2xl">
+            <input type="text" id="name-input" placeholder="Enter your nickname" class="w-full bg-gray-800 text-white px-4 py-3 rounded-lg mb-4 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all">
+            
+            <div class="space-y-3">
+                <button onclick="createRoom()" class="w-full bg-indigo-600 hover:bg-indigo-700 transition-all duration-300 text-white font-bold py-3 rounded-lg shadow-lg transform hover:scale-[1.02]">
+                    Create Room
+                </button>
+                
+                <div class="flex gap-2">
+                    <input type="text" id="room-code-input" placeholder="Room ID" maxlength="6" class="w-2/3 bg-gray-800 text-white px-4 py-3 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 uppercase transition-all">
+                    <button onclick="joinRoom()" class="w-1/3 bg-purple-600 hover:bg-purple-700 transition-all duration-300 text-white font-bold py-3 rounded-lg shadow-lg">
+                        Join
+                    </button>
+                </div>
+
+                <button onclick="worldJoin()" class="w-full bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 transition-all duration-300 text-white font-bold py-3 rounded-lg shadow-lg transform hover:scale-[1.02] mt-4">
+                    🌍 World Matchmaking
+                </button>
+            </div>
+        </div>
+
+        <!-- Lobby View -->
+        <div id="lobby-view" class="hidden glass rounded-2xl p-6 shadow-2xl">
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="text-xl font-bold">Game Lobby</h2>
+                <button onclick="copyRoomId()" class="text-xs bg-gray-700 hover:bg-gray-600 px-3 py-1 rounded-md transition-all">Copy ID</button>
+            </div>
+            <div class="bg-gray-800 p-4 rounded-lg mb-4 text-center">
+                <p class="text-xs text-gray-400">Room ID</p>
+                <p id="room-id-display" class="text-2xl font-mono font-bold tracking-widest text-indigo-400">------</p>
+            </div>
+
+            <div class="mb-4">
+                <p class="text-sm text-gray-400 mb-2">Players (<span id="player-count">0</span>/8):</p>
+                <ul id="lobby-players" class="space-y-2 max-h-40 overflow-y-auto"></ul>
+            </div>
+
+            <div id="host-controls">
+                <button onclick="startGame()" class="w-full bg-green-600 hover:bg-green-700 transition-all duration-300 text-white font-bold py-3 rounded-lg shadow-lg disabled:opacity-50 disabled:cursor-not-allowed">
+                    Start Game
+                </button>
+                <p class="text-xs text-gray-500 text-center mt-2">Waiting for at least 2 players...</p>
+            </div>
+        </div>
+
+        <!-- Game View -->
+        <div id="game-view" class="hidden glass rounded-2xl p-6 shadow-2xl">
+            <!-- Timer -->
+            <div class="mb-4">
+                <div class="flex justify-between text-xs mb-1">
+                    <span id="current-turn-name" class="font-bold text-indigo-300">-</span>
+                    <span id="timer-text" class="font-bold text-gray-300">20s</span>
+                </div>
+                <div class="w-full bg-gray-800 rounded-full h-2.5 overflow-hidden">
+                    <div id="timer-bar" class="timer-bar bg-indigo-500 h-full rounded-full" style="width: 100%"></div>
+                </div>
+            </div>
+
+            <div class="flex justify-between items-center mb-4 bg-gray-800 p-3 rounded-lg">
+                <div class="text-center flex-1">
+                    <p class="text-xs text-gray-400">Chain Length</p>
+                    <p id="chain-length" class="text-xl font-bold text-purple-400">0</p>
+                </div>
+                <div class="text-center flex-1 border-l border-r border-gray-700">
+                    <p class="text-xs text-gray-400">Required Letter</p>
+                    <p id="last-letter" class="text-2xl font-extrabold text-indigo-400">-</p>
+                </div>
+            </div>
+
+            <!-- Chain History -->
+            <div id="chain-history" class="bg-gray-800 p-3 rounded-lg mb-4 h-32 overflow-y-auto flex flex-col-reverse space-reverse">
+                <p class="text-gray-500 text-sm text-center">Waiting for first word...</p>
+            </div>
+
+            <!-- Players List -->
+            <div id="game-players" class="flex flex-wrap gap-2 mb-4"></div>
+
+            <!-- Input -->
+            <div class="flex gap-2">
+                <input type="text" id="word-input" placeholder="Type a word..." disabled class="flex-1 bg-gray-800 text-white px-4 py-3 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all uppercase disabled:opacity-50" maxlength="20">
+                <button id="submit-btn" onclick="submitWord()" disabled class="bg-indigo-600 hover:bg-indigo-700 transition-all duration-300 text-white font-bold px-6 rounded-lg shadow-lg disabled:opacity-50 disabled:cursor-not-allowed">
+                    Send
+                </button>
+            </div>
+            <p id="error-message" class="text-red-400 text-sm mt-2 text-center h-5"></p>
+        </div>
+
+        <!-- Game Over View -->
+        <div id="gameover-view" class="hidden glass rounded-2xl p-6 shadow-2xl text-center">
+            <h2 class="text-3xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-yellow-400 to-orange-500 mb-4">Game Over!</h2>
+            <p class="text-xl text-gray-300 mb-2">Winner:</p>
+            <p id="winner-name" class="text-2xl font-bold text-white mb-6">-</p>
+            <button onclick="backToMenu()" class="w-full bg-indigo-600 hover:bg-indigo-700 transition-all duration-300 text-white font-bold py-3 rounded-lg shadow-lg">
+                Back to Menu
+            </button>
+        </div>
+    </div>
+
+    <script>
+        const socket = io();
+        let currentRoomId = null;
+        let isHost = false;
+        let myName = '';
+        let myId = null;
+
+        // View switching
+        function showView(viewId) {
+            ['menu-view', 'lobby-view', 'game-view', 'gameover-view'].forEach(id => {
+                document.getElementById(id).classList.add('hidden');
+            });
+            const el = document.getElementById(viewId);
+            el.classList.remove('hidden');
+            el.classList.add('fade-in-up');
+        }
+
+        // Menu Actions
+        function createRoom() {
+            myName = document.getElementById('name-input').value.trim() || 'Host';
+            socket.emit('createRoom', myName);
+        }
+
+        function joinRoom() {
+            const roomId = document.getElementById('room-code-input').value.trim().toUpperCase();
+            if (!roomId) return;
+            myName = document.getElementById('name-input').value.trim() || 'Player';
+            socket.emit('joinRoom', { roomId, playerName: myName });
+        }
+
+        function worldJoin() {
+            myName = document.getElementById('name-input').value.trim() || 'Player';
+            socket.emit('worldJoin', myName);
+        }
+
+        // Lobby Actions
+        function copyRoomId() {
+            navigator.clipboard.writeText(currentRoomId);
+            alert('Room ID copied!');
+        }
+
+        function startGame() {
+            socket.emit('startGame');
+        }
+
+        // Game Actions
+        function submitWord() {
+            const input = document.getElementById('word-input');
+            const word = input.value.trim().toLowerCase();
+            if (word) {
+                socket.emit('submitWord', word);
+                input.value = '';
+                document.getElementById('error-message').textContent = '';
+            }
+        }
+
+        document.getElementById('word-input').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') submitWord();
+        });
+
+        function backToMenu() {
+            showView('menu-view');
+        }
+
+        // Socket Listeners
+        socket.on('connect', () => { myId = socket.id; });
+
+        socket.on('roomCreated', (roomId) => {
+            currentRoomId = roomId;
+            isHost = true;
+        });
+
+        socket.on('roomJoined', (roomId) => {
+            currentRoomId = roomId;
+            showView('lobby-view');
+            document.getElementById('room-id-display').textContent = roomId;
+        });
+
+        socket.on('lobbyUpdate', (room) => {
+            const players = Object.values(room.players);
+            document.getElementById('player-count').textContent = players.length;
+            
+            const list = document.getElementById('lobby-players');
+            list.innerHTML = '';
+            players.forEach(p => {
+                const li = document.createElement('li');
+                li.className = 'flex items-center space-x-2 bg-gray-700 p-2 rounded';
+                li.innerHTML = `
+                    <div class="w-8 h-8 rounded-full bg-indigo-500 flex items-center justify-center font-bold text-sm">
+                        ${p.name[0].toUpperCase()}
+                    </div>
+                    <span class="font-medium">${p.name} ${p.id === myId ? '(You)' : ''}</span>
+                    ${room.host === p.id ? '<span class="ml-auto text-xs text-yellow-400 font-bold">HOST</span>' : ''}
+                `;
+                list.appendChild(li);
+            });
+
+            const hostControls = document.getElementById('host-controls');
+            if (room.host === myId) {
+                hostControls.classList.remove('hidden');
+                const startBtn = hostControls.querySelector('button');
+                const waitText = hostControls.querySelector('p');
+                if (players.length >= 2) {
+                    startBtn.disabled = false;
+                    waitText.classList.add('hidden');
+                } else {
+                    startBtn.disabled = true;
+                    waitText.classList.remove('hidden');
+                }
+            } else {
+                hostControls.classList.add('hidden');
+            }
+        });
+
+        socket.on('gameStart', (room) => {
+            showView('game-view');
+            updateGamePlayers(room.players, room.currentTurnId);
+        });
+
+        socket.on('timerUpdate', ({ timeLeft, currentTurnId }) => {
+            const bar = document.getElementById('timer-bar');
+            const text = document.getElementById('timer-text');
+            const percent = (timeLeft / 20) * 100;
+            
+            bar.style.width = `${percent}%`;
+            text.textContent = `${timeLeft}s`;
+
+            if (timeLeft <= 5) {
+                bar.classList.remove('bg-indigo-500');
+                bar.classList.add('bg-red-500', 'pulse-danger');
+                text.classList.add('text-red-400');
+            } else {
+                bar.classList.add('bg-indigo-500');
+                bar.classList.remove('bg-red-500', 'pulse-danger');
+                text.classList.remove('text-red-400');
+            }
+
+            // Enable input only if it's my turn
+            const isMyTurn = currentTurnId === myId;
+            document.getElementById('word-input').disabled = !isMyTurn;
+            document.getElementById('submit-btn').disabled = !isMyTurn;
+            
+            if (isMyTurn) {
+                document.getElementById('word-input').focus();
+                document.getElementById('current-turn-name').textContent = 'YOUR TURN!';
+                document.getElementById('current-turn-name').classList.add('text-green-400');
+            } else {
+                const room = Object.values(socket.rooms); // fallback
+                document.getElementById('current-turn-name').textContent = 'Opponent thinking...';
+                document.getElementById('current-turn-name').classList.remove('text-green-400');
+            }
+        });
+
+        socket.on('wordAccepted', ({ word, playerId, lastLetter }) => {
+            const history = document.getElementById('chain-history');
+            // Clear waiting message
+            if (history.querySelector('p')) history.innerHTML = '';
+
+            const div = document.createElement('div');
+            div.className = `slide-in text-lg font-bold ${playerId === myId ? 'text-indigo-400 text-right' : 'text-gray-300 text-left'}`;
+            div.textContent = word.toUpperCase();
+            history.prepend(div);
+
+            document.getElementById('last-letter').textContent = lastLetter.toUpperCase();
+            const chainLengthEl = document.getElementById('chain-length');
+            chainLengthEl.textContent = parseInt(chainLengthEl.textContent) + 1;
+            document.getElementById('error-message').textContent = '';
+        });
+
+        socket.on('invalidWord', (message) => {
+            const errEl = document.getElementById('error-message');
+            errEl.textContent = message;
+            setTimeout(() => { errEl.textContent = ''; }, 3000);
+        });
+
+        socket.on('playerEliminated', ({ playerId, reason }) => {
+            const errEl = document.getElementById('error-message');
+            // We don't have the name easily accessible here without keeping local state, 
+            // but the server updates turns immediately. We can just flash a generic message.
+            errEl.textContent = `A player was eliminated! ${reason}`;
+            setTimeout(() => { errEl.textContent = ''; }, 3000);
+            // Request updated player list if needed (or handle via state)
+            // For simplicity, the turn passes automatically.
+        });
+
+        socket.on('gameOver', ({ winnerId }) => {
+            showView('gameover-view');
+            // Since we don't have the full room state on client at this exact moment without keeping a cache,
+            // we can just display "You" if you won, or "Opponent".
+            document.getElementById('winner-name').textContent = winnerId === myId ? 'YOU! 🎉' : 'Opponent';
+        });
+
+        function updateGamePlayers(players, currentTurnId) {
+            const container = document.getElementById('game-players');
+            container.innerHTML = '';
+            Object.entries(players).forEach(([id, p]) => {
+                const div = document.createElement('div');
+                const isTurn = id === currentTurnId;
+                div.className = `flex items-center space-x-1 px-2 py-1 rounded-full text-xs ${isTurn ? 'bg-indigo-600 scale-105' : 'bg-gray-700 opacity-50'}`;
+                div.innerHTML = `<span class="font-bold">${p.name}</span>`;
+                container.appendChild(div);
+            });
+        }
+
+        socket.on('errorMessage', (msg) => {
+            alert(msg);
+        });
+    </script>
+</body>
+</html>
